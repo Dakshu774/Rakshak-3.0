@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "228889414216",
+    "project_id": "testing-d1cbb",
+    "storage_bucket": "testing-d1cbb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:228889414216:android:80f63fb632049e5605267d",
+        "android_client_info": {
+          "package_name": "com.example.helloworld"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbrt1YseA6Jijd42uRRcbMx0jmq9z58uk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
