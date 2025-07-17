@@ -25,6 +25,8 @@ This app was built with real-world use in mind, aiming to provide quick, intelli
 
 ---
 ### Screenshots
+(screenshots/home.jpg)
+
 
 ---
 ### Why I Built This
@@ -38,11 +40,6 @@ Prerequisites
 - Flutter 3.x
 - Android Studio or VS Code
 - Firebase Project Setup
-
-### Run the App
-```bash
-flutter pub get
-flutter run
 
 ### Requirements
 flutter SDK (>=3.0.0)
@@ -62,6 +59,12 @@ We welcome contributions from the community! Please fork the repo and create a p
 
 Contact
 Developer: Dakshesh Kale
-GitHub: @yourgithub
-LinkedIn: Your LinkedIn
+GitHub: https://github.com/Dakshu774
 Email: kaledakshesh774@gmail.com
+
+
+### Run the App
+```bash
+flutter pub get
+flutter run
+
