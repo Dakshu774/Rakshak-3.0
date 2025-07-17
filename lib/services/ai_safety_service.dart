@@ -44,14 +44,14 @@ class AISafetyService {
   StreamSubscription<Position>? _positionStreamSubscription;
 
   // Voice identification properties
-  Map<String, List<double>> _voiceProfiles = {};
+  final Map<String, List<double>> _voiceProfiles = {};
   List<double>? _lastVoiceFeatures;
   bool _isVoiceModelTrained = false;
   final double _voiceMatchThreshold = 0.85;
 
   // Routine analysis properties
-  Map<String, Map<String, dynamic>> _userRoutines = {};
-  List<Map<String, dynamic>> _routineDeviations = [];
+  final Map<String, Map<String, dynamic>> _userRoutines = {};
+  final List<Map<String, dynamic>> _routineDeviations = [];
   final int _maxDeviationsBeforeAlert = 3;
 
   AISafetyService._internal() {
@@ -1084,7 +1084,7 @@ Current Status:
     try {
       // Notify emergency contacts
       if (_auth.currentUser != null) {
-        final message = 'Routine deviation detected. User has deviated from expected schedule multiple times.';
+        const message = 'Routine deviation detected. User has deviated from expected schedule multiple times.';
         await _sendEmergencyNotification(message);
         
         // Log deviation
