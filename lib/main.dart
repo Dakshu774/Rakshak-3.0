@@ -6,30 +6,17 @@ import 'signup.dart';
 import 'home.dart';
 import 'emergency_listening_page.dart';
 import 'consultancy_tab.dart';
-import 'screens/voice_safety_settings.dart';
-import 'screens/consultation_screen.dart';
-import 'screens/ai_monitoring_screen.dart';
 import 'screens/event_planner_screen.dart';
-import 'services/ai_safety_service.dart';
-// Event model
+import 'screens/location_tracking_screen.dart'; // Ensure this import is correct!
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   try {
-    // Initialize Firebase
     await Firebase.initializeApp();
     print('✅ Firebase Initialized successfully!');
-
-    // Initialize Stripe after Firebase
-    // initializeStripe();
-
-    // Run the app with AuthGate (Properly Wrapped)
     runApp(const MyApp());
   } catch (e) {
     print("🔥 Error initializing app: $e");
-
-    // Ensure MaterialApp wraps ErrorScreen
     runApp(MaterialApp(
       home: ErrorScreen(message: 'Error initializing app: $e'),
     ));
@@ -71,26 +58,33 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.pinkAccent, brightness: Brightness.dark),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF020617), // kSlate950
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF3B82F6), // kBlue500
+          secondary: Color(0xFF10B981), // kEmerald500
+          surface: Color(0xFF1E293B), // kSlate800
+          background: Color(0xFF020617), // kSlate950
+        ),
       ),
-      themeMode: ThemeMode.system,
-      home: const MainScreen(),
+      themeMode: ThemeMode.dark, // Forces dark mode for your new UI
+      home: const AuthGate(),
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/login':
             return MaterialPageRoute(builder: (_) => const LoginPage());
           case '/signup':
             return MaterialPageRoute(builder: (_) => const SignupPage());
+          case '/home':
+            return MaterialPageRoute(builder: (_) => const Home());
           case '/emergency':
             return MaterialPageRoute(builder: (_) => const EmergencyListeningPage());
-          case '/home':
-            return MaterialPageRoute(builder: (_) => const HomePage());
           case '/consultancy':
-            return MaterialPageRoute(builder: (_) => const ConsultancyTab());
-          case '/event_planner':  // New route for EventPlannerScreen
+             return MaterialPageRoute(builder: (_) => const ConsultancyTab());
+          case '/event_planner':
             return MaterialPageRoute(builder: (_) => const EventPlannerScreen());
-          case '/voice_safety_settings':
-            return MaterialPageRoute(builder: (_) => const VoiceSafetySettings());
+          case '/location_tracking':
+            return MaterialPageRoute(builder: (_) => const LocationTrackingScreen());
           default:
             return _errorRoute();
         }
@@ -113,92 +107,24 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(  // Listen for the user's authentication state
+    return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
+        // While waiting for auth state, show a loading indicator
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator())); // Show loading spinner while waiting
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        // If there's an error, show it
         if (snapshot.hasError) {
-          return ErrorScreen(message: 'Authentication error: ${snapshot.error}'); // Show error message if any
+          return ErrorScreen(message: 'Authentication error: ${snapshot.error}');
         }
+        // If user is logged in, go to Home. Otherwise, go to Login.
         if (snapshot.hasData) {
-          return const HomePage(); // If user is logged in, go to HomePage
+          return const Home();
         } else {
-          return const LoginPage(); // Otherwise, go to LoginPage
+          return const LoginPage();
         }
       },
-    );
-  }
-}
-
-class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
-
-  @override
-  _MainScreenState createState() => _MainScreenState();
-}
-
-class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
-  final _aiService = AISafetyService();
-
-  final List<Widget> _screens = [
-    const HomePage(),
-    const EventPlannerScreen(),
-    const AIMonitoringScreen(),
-    const VoiceSafetySettings(),
-    const ConsultationScreen(),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeService();
-  }
-
-  Future<void> _initializeService() async {
-    try {
-      await _aiService.initialize();
-    } catch (e) {
-      print('Error initializing AI service: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.event),
-            label: 'Events',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.psychology),
-            label: 'AI Monitor',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people),
-            label: 'Consult',
-          ),
-        ],
-      ),
     );
   }
 }

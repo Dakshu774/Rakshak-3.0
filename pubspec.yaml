@@ -10,12 +10,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  lucide_icons: ^0.257.0
   cupertino_icons: ^1.0.2
+  battery_plus: ^6.0.0
   firebase_core: ^2.24.2
   firebase_auth: ^4.15.3
   cloud_firestore: ^4.13.6
   firebase_storage: ^11.5.6
   firebase_messaging: ^14.7.9
+  share_plus: ^9.0.0
   flutter_local_notifications: ^18.0.1
   shared_preferences: ^2.2.2
   provider: ^6.1.1
