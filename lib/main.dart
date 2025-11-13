@@ -6,8 +6,10 @@ import 'signup.dart';
 import 'home.dart';
 import 'emergency_listening_page.dart';
 import 'consultancy_tab.dart';
+// Standardized imports for files inside the 'screens' folder
 import 'screens/event_planner_screen.dart';
-import 'screens/location_tracking_screen.dart'; // Ensure this import is correct!
+import 'screens/location_tracking_screen.dart'; 
+import 'screens/voice_safety_settings.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,15 +61,14 @@ class MyApp extends StatelessWidget {
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF020617), // kSlate950
+        scaffoldBackgroundColor: const Color(0xFF020617),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF3B82F6), // kBlue500
-          secondary: Color(0xFF10B981), // kEmerald500
-          surface: Color(0xFF1E293B), // kSlate800
-          background: Color(0xFF020617), // kSlate950
+          primary: Color(0xFF3B82F6),
+          secondary: Color(0xFF10B981),
+          surface: Color(0xFF1E293B),
         ),
       ),
-      themeMode: ThemeMode.dark, // Forces dark mode for your new UI
+      themeMode: ThemeMode.dark,
       home: const AuthGate(),
       onGenerateRoute: (settings) {
         switch (settings.name) {
@@ -110,15 +111,12 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // While waiting for auth state, show a loading indicator
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        // If there's an error, show it
         if (snapshot.hasError) {
           return ErrorScreen(message: 'Authentication error: ${snapshot.error}');
         }
-        // If user is logged in, go to Home. Otherwise, go to Login.
         if (snapshot.hasData) {
           return const Home();
         } else {

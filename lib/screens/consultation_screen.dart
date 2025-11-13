@@ -313,13 +313,13 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: kBlue500))
                 : _filteredProfessionals.isEmpty
-                    ? Center(
+                    ? const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(LucideIcons.userX, size: 48, color: kSlate800),
-                            const SizedBox(height: 16),
-                            const Text("No specialists found",
+                            Icon(LucideIcons.userX, size: 48, color: kSlate800),
+                            SizedBox(height: 16),
+                            Text("No specialists found",
                                 style: TextStyle(color: kSlate500, fontWeight: FontWeight.w500)),
                           ],
                         ),

@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "228889414216",
+    "firebase_url": "https://testing-d1cbb-default-rtdb.firebaseio.com",
     "project_id": "testing-d1cbb",
     "storage_bucket": "testing-d1cbb.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.example.helloworld"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "228889414216-5pfuc4foa73qh7v3v3prkrhikcdcdo6f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.helloworld",
+            "certificate_hash": "dbbd75bbd848e6519acb88dc5abde8707c792e95"
+          }
+        },
+        {
+          "client_id": "228889414216-pb5f56ma6mco32tkvjer2fab67ok2da7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDbrt1YseA6Jijd42uRRcbMx0jmq9z58uk"
@@ -20,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "228889414216-pb5f56ma6mco32tkvjer2fab67ok2da7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
