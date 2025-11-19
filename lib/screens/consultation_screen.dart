@@ -7,7 +7,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
-// --- THEME CONSTANTS ---
 const Color kSlate950 = Color(0xFF020617);
 const Color kSlate900 = Color(0xFF0F172A);
 const Color kSlate800 = Color(0xFF1E293B);
@@ -38,7 +37,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   List<Map<String, dynamic>> _filteredProfessionals = [];
   final List<String> _categories = ['All', 'Psychologist', 'Doctor', 'Counselor', 'Therapist'];
 
-  // Razorpay Variables
+
   late Razorpay _razorpay;
   VoidCallback? _onPaymentSuccessAction; 
 
@@ -46,7 +45,6 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   void initState() {
     super.initState();
     
-    // 1. Initialize Razorpay
     _razorpay = Razorpay();
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
@@ -63,7 +61,6 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     super.dispose();
   }
 
-  // --- RAZORPAY HANDLERS ---
   void _handlePaymentSuccess(PaymentSuccessResponse response) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,15 +113,14 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // 1. Check if ANY data exists in Firebase
+
       final snapshot = await FirebaseFirestore.instance.collection('professionals').get();
 
-      // 2. ONLY if database is empty, add demo data.
-      // Otherwise, we assume you have your own data there.
+
       if (snapshot.docs.isEmpty) {
         print("Database empty. Seeding demo data...");
         await _populateDemoData();
-        // Fetch again after seeding
+
         await _loadProfessionals(); 
       } else {
         print("Data found in Firebase. Loading...");
@@ -137,7 +133,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   }
 
   Future<void> _populateDemoData() async {
-    // This list is only used if your database is completely empty
+
     final demoDocs = {
       'demo_pro_1': {
         'name': 'Dr. Sarah Wilson',
@@ -246,7 +242,6 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     });
   }
 
-  // --- ACTION LOGIC ---
 
   void _handleConsultationRequest(Map<String, dynamic> professional, String actionType) {
     final int fee = professional['fee'] ?? 0;
@@ -399,7 +394,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     }
   }
 
-  // --- UI BUILDING ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

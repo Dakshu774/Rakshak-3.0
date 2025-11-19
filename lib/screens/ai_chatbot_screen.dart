@@ -22,7 +22,6 @@ class _AIChatbotScreenState extends State<AIChatbotScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ We use 'gemini-1.5-flash' as it is the standard for the Free Tier now.
     _model = GenerativeModel(
       model: 'gemini-2.5-flash', 
       apiKey: apiKey,

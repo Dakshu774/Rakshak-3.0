@@ -5,10 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
-
-// 1. IMPORT THE AI HUB SCREEN
 import 'ai_safety_hub.dart'; 
-
 import '../services/ai_safety_service.dart';
 import 'voice_safety_settings.dart';
 

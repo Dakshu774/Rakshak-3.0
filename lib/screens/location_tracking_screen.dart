@@ -183,7 +183,6 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
         
         _myPosition = position;
 
-        // ** FIX: Automatically set Safe Zone on first load **
         if (_circles.isEmpty) {
            _updateSafeZone(LatLng(position.latitude, position.longitude));
         }

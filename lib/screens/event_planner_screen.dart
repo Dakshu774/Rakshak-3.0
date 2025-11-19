@@ -233,7 +233,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
   // --- EVENT MANAGEMENT ---
 
-  // NEW: Helper to delete events where the final call was already made
+
   Future<void> _cleanupOldEvents() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
