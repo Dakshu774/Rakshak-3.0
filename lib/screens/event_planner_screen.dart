@@ -4,11 +4,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:geolocator/geolocator.dart';
 
+// --- COLORS ---
 const Color kSlate950 = Color(0xFF020617);
 const Color kSlate900 = Color(0xFF0F172A);
 const Color kSlate800 = Color(0xFF1E293B);
@@ -32,19 +33,24 @@ class EventPlannerScreen extends StatefulWidget {
 class _EventPlannerScreenState extends State<EventPlannerScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  
+  // Form Data
   DateTime? _selectedDate;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   final _titleController = TextEditingController();
   final _locationController = TextEditingController();
   final _descriptionController = TextEditingController();
-  List<Map<String, dynamic>> _events = [];
+  
+  // Location Data
   LatLng? _selectedLocation;
   bool _isSearching = false;
   List<Location> _searchResults = [];
 
+  // Check-in Logic
   bool _isCheckinRequired = false;
   Timer? _checkinTimer;
+  List<Map<String, dynamic>> _events = [];
 
   @override
   void initState() {
@@ -61,6 +67,8 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     _checkinTimer?.cancel();
     super.dispose();
   }
+
+  // --- DATA LOADING ---
 
   Future<void> _loadEvents() async {
     setState(() => _isLoading = true);
@@ -96,6 +104,8 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
       }
     }
   }
+
+  // --- SAFETY & ALERTS LOGIC ---
 
   void _startCheckinTimer() {
     _checkinTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
@@ -137,19 +147,21 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
       if (!isCheckinRequired || isCheckedIn) continue;
 
+      // 10 Minute Overdue: CALL
       final bool is10MinOverdue =
           endTime.isBefore(now.subtract(const Duration(minutes: 10)));
       if (is10MinOverdue && alertState == 'sms_sent') {
         print('MISSED 10 MIN CHECK-IN: ${event['title']} - Triggering CALL');
-        _triggerPhoneCall(); // Use new helper
+        _triggerPhoneCall(); 
         _markEventAsAlerted(event['id'], 'call_sent');
       }
 
+      // 5 Minute Overdue: SMS
       final bool is5MinOverdue =
           endTime.isBefore(now.subtract(const Duration(minutes: 5)));
       if (is5MinOverdue && alertState == 'none') {
         print('MISSED 5 MIN CHECK-IN: ${event['title']} - Sending SMS');
-        _triggerSmsAlert(event['title']); // Use new helper
+        _triggerSmsAlert(event['title']); 
         _markEventAsAlerted(event['id'], 'sms_sent');
       }
     }
@@ -157,10 +169,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
   Future<void> _triggerSmsAlert(String eventTitle) async {
     String? parentNumber = await _getFirstEmergencyContact();
-    if (parentNumber == null || parentNumber.isEmpty) {
-      print("No parent contact number found to send alert.");
-      return;
-    }
+    if (parentNumber == null || parentNumber.isEmpty) return;
 
     final String message =
         "Safety Alert: Missed check-in for event: '$eventTitle'. Possible concern (5 min overdue).";
@@ -170,8 +179,6 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     try {
       if (await canLaunchUrl(launchUri)) {
         await launchUrl(launchUri);
-      } else {
-        print("Could not launch SMS app.");
       }
     } catch (e) {
       print("Error sending SMS: $e");
@@ -180,10 +187,8 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
   Future<void> _triggerPhoneCall() async {
     String? parentNumber = await _getFirstEmergencyContact();
-    if (parentNumber == null || parentNumber.isEmpty) {
-      print("No parent contact number found to make call.");
-      return;
-    }
+    if (parentNumber == null || parentNumber.isEmpty) return;
+    
     final Uri launchUri = Uri(scheme: 'tel', path: parentNumber);
     try {
       if (await canLaunchUrl(launchUri)) {
@@ -210,6 +215,50 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     }
   }
 
+  Future<void> _markEventAsCheckedIn(String eventId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(eventId)
+          .update({'isCheckedIn': true, 'alertState': 'checked_in'});
+      _loadEvents();
+    } catch (e) {
+      print("Error marking event as checked in: $e");
+    }
+  }
+
+  // --- EVENT MANAGEMENT ---
+
+  // NEW: Helper to delete events where the final call was already made
+  Future<void> _cleanupOldEvents() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Find events where alertState is 'call_sent'
+      final snapshotCallSent = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .where('alertState', isEqualTo: 'call_sent')
+          .get();
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshotCallSent.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+      print("Cleaned up ${snapshotCallSent.docs.length} completed alert events.");
+    } catch (e) {
+      print("Error cleaning up old events: $e");
+    }
+  }
+
   Future<void> _addEvent() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDate == null || _startTime == null || _endTime == null) {
@@ -220,17 +269,11 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     }
 
     final DateTime startDateTime = DateTime(
-        _selectedDate!.year,
-        _selectedDate!.month,
-        _selectedDate!.day,
-        _startTime!.hour,
-        _startTime!.minute);
+        _selectedDate!.year, _selectedDate!.month, _selectedDate!.day,
+        _startTime!.hour, _startTime!.minute);
     final DateTime endDateTime = DateTime(
-        _selectedDate!.year,
-        _selectedDate!.month,
-        _selectedDate!.day,
-        _endTime!.hour,
-        _endTime!.minute);
+        _selectedDate!.year, _selectedDate!.month, _selectedDate!.day,
+        _endTime!.hour, _endTime!.minute);
 
     if (endDateTime.isBefore(startDateTime)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -243,6 +286,11 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        
+        // 1. CLEAN UP OLD ALERTS
+        await _cleanupOldEvents();
+
+        // 2. ADD NEW EVENT
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -276,7 +324,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
         await _loadEvents();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Event added successfully'),
+              content: Text('Event created & old alerts cleared'),
               backgroundColor: kBlue500));
         }
       }
@@ -292,21 +340,57 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     }
   }
 
-  Future<void> _markEventAsCheckedIn(String eventId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  Future<void> _deleteEvent(String eventId) async {
+    // 1. Show Confirmation Dialog
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: kSlate900,
+        title: const Text('Delete Event?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Are you sure you want to remove this event? This cannot be undone.',
+          style: TextStyle(color: kSlate400),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: kSlate400)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: kRed500, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // 2. Perform Delete
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('events')
-          .doc(eventId)
-          .update({'isCheckedIn': true, 'alertState': 'checked_in'});
-      _loadEvents();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('events')
+            .doc(eventId)
+            .delete();
+            
+        await _loadEvents(); // Refresh the list
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Event deleted'), backgroundColor: kRed500),
+          );
+        }
+      }
     } catch (e) {
-      print("Error marking event as checked in: $e");
+      print("Error deleting event: $e");
     }
   }
+
+  // --- LOCATION LOGIC ---
 
   Future<void> _searchLocation(String query) async {
     if (query.isEmpty) {
@@ -319,19 +403,94 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     setState(() => _isSearching = true);
     try {
       List<Location> locations = await locationFromAddress(query);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _searchResults = locations;
           _isSearching = false;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _searchResults = [];
           _isSearching = false;
         });
+      }
     }
   }
+
+  Future<void> _openLocationPicker() async {
+    // 1. Determine initial position (Current Location or Default to Pune)
+    LatLng initialPos = const LatLng(18.5204, 73.8567);
+    
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Check services
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (serviceEnabled) {
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        try {
+          Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high
+          );
+          initialPos = LatLng(position.latitude, position.longitude);
+        } catch(e) {
+          print("Error getting location: $e");
+        }
+      }
+    }
+
+    // 2. Navigate to Map Picker
+    final LatLng? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapPickerScreen(initialLocation: initialPos),
+      ),
+    );
+
+    // 3. Handle Result
+    if (result != null) {
+      setState(() {
+        _selectedLocation = result;
+        _isSearching = true; 
+      });
+
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+            result.latitude, result.longitude);
+        
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          // Format: Street, Sublocality, City
+          String address = "";
+          if (place.street != null) address += "${place.street}, ";
+          if (place.subLocality != null && place.subLocality!.isNotEmpty) {
+             address += "${place.subLocality}, ";
+          }
+          if (place.locality != null) address += place.locality!;
+          
+          // Cleanup trailing comma
+          if(address.endsWith(", ")) address = address.substring(0, address.length - 2);
+
+          _locationController.text = address;
+        } else {
+          _locationController.text = "${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)}";
+        }
+      } catch (e) {
+        _locationController.text = "${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)}";
+      } finally {
+        setState(() => _isSearching = false);
+      }
+    }
+  }
+
+  // --- DATE PICKERS ---
 
   Future<DateTime?> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -349,14 +508,10 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
               dialogBackgroundColor: kSlate900),
           child: child!),
     );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
-    }
     return picked;
   }
 
-  Future<TimeOfDay?> _selectTime(BuildContext context,
-      {TimeOfDay? initialTime}) async {
+  Future<TimeOfDay?> _selectTime(BuildContext context, {TimeOfDay? initialTime}) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: initialTime ?? TimeOfDay.now(),
@@ -379,12 +534,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     return picked;
   }
 
-  Future<void> _openLocationPicker() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Opening Map Picker...'), backgroundColor: kBlue500),
-    );
-  }
+  // --- UI BUILDER ---
 
   @override
   Widget build(BuildContext context) {
@@ -596,6 +746,8 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
     );
   }
 
+  // --- WIDGET HELPERS ---
+
   Widget _buildEventCard(BuildContext context, Map<String, dynamic> event) {
     if (event['startTime'] == null || event['endTime'] == null)
       return Container();
@@ -708,7 +860,36 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(LucideIcons.moreVertical, color: kSlate700, size: 20),
+              // --- START OF CHANGE ---
+              PopupMenuButton<String>(
+                icon: Icon(LucideIcons.moreVertical, color: kSlate400, size: 20),
+                color: kSlate800,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: kSlate700),
+                ),
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _deleteEvent(event['id']);
+                  }
+                },
+                itemBuilder: (BuildContext context) => [
+                  const PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.trash2, color: kRed500, size: 18),
+                        SizedBox(width: 12),
+                        Text(
+                          'Delete Event',
+                          style: TextStyle(color: kRed500, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // --- END OF CHANGE ---
             ],
           ),
           if (requiresCheckin && !isCheckedIn && !isEventOver)
@@ -926,5 +1107,68 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
                         });
                       });
                 })));
+  }
+}
+
+// --- NEW: MAP PICKER SCREEN ---
+
+class MapPickerScreen extends StatefulWidget {
+  final LatLng initialLocation;
+  const MapPickerScreen({Key? key, required this.initialLocation}) : super(key: key);
+
+  @override
+  _MapPickerScreenState createState() => _MapPickerScreenState();
+}
+
+class _MapPickerScreenState extends State<MapPickerScreen> {
+  late LatLng _pickedLocation;
+  GoogleMapController? _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pickedLocation = widget.initialLocation;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pick Location', style: TextStyle(color: Colors.white)),
+        backgroundColor: kSlate900,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.check, color: kEmerald500),
+            onPressed: () {
+              Navigator.of(context).pop(_pickedLocation);
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: widget.initialLocation,
+              zoom: 15,
+            ),
+            onMapCreated: (controller) => _mapController = controller,
+            onCameraMove: (position) {
+              _pickedLocation = position.target;
+            },
+            myLocationEnabled: true,
+            myLocationButtonEnabled: true,
+          ),
+          // Center Pin
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 40.0), // Adjust for pin image height
+              child: Icon(LucideIcons.mapPin, color: kRed500, size: 40),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -1,23 +1,24 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 // --- THEME CONSTANTS ---
 const Color kSlate950 = Color(0xFF020617);
 const Color kSlate900 = Color(0xFF0F172A);
 const Color kSlate800 = Color(0xFF1E293B);
 const Color kSlate700 = Color(0xFF334155);
-const Color kSlate600 = Color(0xFF475569);
 const Color kSlate500 = Color(0xFF64748B);
 const Color kSlate400 = Color(0xFF94A3B8);
 const Color kSlate300 = Color(0xFFCBD5E1);
-const Color kSlate200 = Color(0xFFE2E8F0);
 const Color kBlue500 = Color(0xFF3B82F6);
 const Color kEmerald500 = Color(0xFF10B981);
 const Color kRed500 = Color(0xFFEF4444);
 const Color kAmber500 = Color(0xFFF59E0B);
+const Color kSlate200 = Color(0xFFE2E8F0);
 
 class ConsultationScreen extends StatefulWidget {
   const ConsultationScreen({Key? key}) : super(key: key);
@@ -30,28 +31,102 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   final _searchController = TextEditingController();
   String _selectedCategory = 'All';
   bool _isLoading = false;
+  
+  // Data Lists
   List<Map<String, dynamic>> _professionals = [];
   List<Map<String, dynamic>> _filteredProfessionals = [];
-
   final List<String> _categories = ['All', 'Psychologist', 'Doctor', 'Counselor', 'Therapist'];
+
+  // Razorpay Variables
+  late Razorpay _razorpay;
+  VoidCallback? _onPaymentSuccessAction; 
 
   @override
   void initState() {
     super.initState();
+    
+    // 1. Initialize Razorpay
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+
+    // 2. Load Data
     _checkAndLoadData();
   }
 
-  // --- SMART DATA LOADING ---
+  @override
+  void dispose() {
+    _razorpay.clear(); 
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // --- RAZORPAY HANDLERS ---
+  void _handlePaymentSuccess(PaymentSuccessResponse response) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Payment Successful: ${response.paymentId}"), backgroundColor: kEmerald500),
+      );
+    }
+    if (_onPaymentSuccessAction != null) {
+      _onPaymentSuccessAction!();
+      _onPaymentSuccessAction = null;
+    }
+  }
+
+  void _handlePaymentError(PaymentFailureResponse response) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Payment Failed: ${response.message}"), backgroundColor: kRed500),
+      );
+    }
+    _onPaymentSuccessAction = null;
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("External Wallet: ${response.walletName}")),
+      );
+    }
+  }
+
+  void _openRazorpayCheckout(int amount, String doctorName, String phone, VoidCallback onSuccess) {
+    _onPaymentSuccessAction = onSuccess;
+    var options = {
+      'key': 'rzp_test_RhYYUi0QAJoIjR', 
+      'amount': amount * 100,
+      'name': 'Consultation App',
+      'description': 'Consultation with $doctorName',
+      'prefill': {'contact': '9876543210', 'email': 'user@example.com'},
+      'external': {'wallets': ['paytm']}
+    };
+    try {
+      _razorpay.open(options);
+    } catch (e) {
+      debugPrint('Error opening Razorpay: $e');
+    }
+  }
+
+  // --- DATA LOGIC (UPDATED) ---
+
   Future<void> _checkAndLoadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
+      // 1. Check if ANY data exists in Firebase
       final snapshot = await FirebaseFirestore.instance.collection('professionals').get();
 
+      // 2. ONLY if database is empty, add demo data.
+      // Otherwise, we assume you have your own data there.
       if (snapshot.docs.isEmpty) {
-        print("Database empty, creating demo data...");
+        print("Database empty. Seeding demo data...");
         await _populateDemoData();
+        // Fetch again after seeding
+        await _loadProfessionals(); 
       } else {
+        print("Data found in Firebase. Loading...");
         _processSnapshot(snapshot);
       }
     } catch (e) {
@@ -61,6 +136,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   }
 
   Future<void> _populateDemoData() async {
+    // This list is only used if your database is completely empty
     final demoDocs = {
       'demo_pro_1': {
         'name': 'Dr. Sarah Wilson',
@@ -70,7 +146,8 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         'reviews': 124,
         'imageUrl': 'https://i.pravatar.cc/150?img=47',
         'isAvailable': true,
-        'phone': '+1234567890'
+        'phone': '+1234567890',
+        'fee': 1500,
       },
       'demo_pro_2': {
         'name': 'Dr. James Carter',
@@ -80,7 +157,8 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         'reviews': 89,
         'imageUrl': 'https://i.pravatar.cc/150?img=33',
         'isAvailable': false,
-        'phone': '+1987654321'
+        'phone': '+1987654321',
+        'fee': 800,
       },
       'demo_pro_3': {
         'name': 'Dr. Emily Chen',
@@ -90,7 +168,8 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         'reviews': 56,
         'imageUrl': 'https://i.pravatar.cc/150?img=5',
         'isAvailable': true,
-        'phone': '+1122334455'
+        'phone': '+1122334455',
+        'fee': 1200,
       },
       'demo_pro_4': {
         'name': 'Crisis Hotline',
@@ -100,21 +179,22 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         'reviews': 1024,
         'imageUrl': null,
         'isAvailable': true,
-        'phone': '911'
+        'phone': '911',
+        'fee': 0,
       },
     };
 
     try {
-       for (var entry in demoDocs.entries) {
-         await FirebaseFirestore.instance
-             .collection('professionals')
-             .doc(entry.key)
-             .set(entry.value, SetOptions(merge: true));
-       }
-       await _loadProfessionals();
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance.collection('professionals');
+
+      for (var entry in demoDocs.entries) {
+        final docRef = collection.doc(entry.key);
+        batch.set(docRef, entry.value);
+      }
+      await batch.commit();
     } catch (e) {
-       print("Error populating data: $e");
-       if (mounted) setState(() => _isLoading = false);
+      print("Error seeding data: $e");
     }
   }
 
@@ -130,11 +210,15 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
 
   void _processSnapshot(QuerySnapshot snapshot) {
     if (!mounted) return;
-    setState(() {
-      _professionals = snapshot.docs
+    
+    final rawList = snapshot.docs
           .map((doc) => {...doc.data() as Map<String, dynamic>, 'id': doc.id})
           .toList();
+
+    setState(() {
+      _professionals = rawList;
       _filteredProfessionals = _professionals;
+      
       if (_selectedCategory != 'All' || _searchController.text.isNotEmpty) {
          _filterProfessionals(_searchController.text);
       }
@@ -159,6 +243,90 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
             .toList();
       }
     });
+  }
+
+  // --- ACTION LOGIC ---
+
+  void _handleConsultationRequest(Map<String, dynamic> professional, String actionType) {
+    final int fee = professional['fee'] ?? 0;
+
+    if (fee == 0) {
+      if (actionType == 'chat') _startChat(professional);
+      if (actionType == 'call') _makeCall(professional['phone']);
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: kSlate900,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: kSlate800)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: kSlate700, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: kBlue500.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(actionType == 'chat' ? LucideIcons.messageCircle : LucideIcons.phone, color: kBlue500),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Consultation Fee", style: TextStyle(color: kSlate400, fontSize: 14)),
+                      Text("₹$fee", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Text("You are about to consult with:", style: TextStyle(color: kSlate400)),
+            const SizedBox(height: 8),
+            Text(professional['name'], style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 32),
+            
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); 
+                _openRazorpayCheckout(
+                  fee, 
+                  professional['name'], 
+                  professional['phone'] ?? '',
+                  () {
+                    if (actionType == 'chat') _startChat(professional);
+                    if (actionType == 'call') _makeCall(professional['phone']);
+                  }
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kEmerald500,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text("Pay with Razorpay", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: kSlate500)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _startChat(Map<String, dynamic> professional) async {
@@ -230,6 +398,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
     }
   }
 
+  // --- UI BUILDING ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -245,6 +414,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
       ),
       body: Column(
         children: [
+          // Search and Filter Section
           Container(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             decoration: const BoxDecoration(
@@ -309,6 +479,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
               ],
             ),
           ),
+          // List Section
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: kBlue500))
@@ -337,6 +508,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
       ),
     );
   }
+  
   Widget _buildProfessionalCard(Map<String, dynamic> pro) {
     final String name = pro['name'] ?? 'Unknown';
     final String type = pro['specialization'] ?? 'Specialist';
@@ -346,6 +518,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         : (pro['rating'] as double?) ?? 4.8;
     final int reviews = (pro['reviews'] as int?) ?? 0;
     final bool isAvailable = pro['isAvailable'] ?? true;
+    final int fee = pro['fee'] ?? 0; 
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -354,122 +527,164 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: kSlate800),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: kSlate800,
-              borderRadius: BorderRadius.circular(12),
-              image: imageUrl != null
-                  ? DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover)
-                  : null,
-            ),
-            child: imageUrl == null
-                ? const Icon(LucideIcons.user, color: kSlate500, size: 24)
-                : null,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: kSlate800,
+                  borderRadius: BorderRadius.circular(12),
+                  image: imageUrl != null
+                      ? DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover)
+                      : null,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  type,
-                  style: const TextStyle(color: kBlue500, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                Row(
+                child: imageUrl == null
+                    ? const Icon(LucideIcons.user, color: kSlate500, size: 24)
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(LucideIcons.star, size: 14, color: kAmber500),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating.toString(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    if (reviews > 0)
-                      Text(
-                        ' ($reviews)',
-                        style: const TextStyle(color: kSlate500, fontSize: 13),
-                      ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isAvailable ? kEmerald500.withOpacity(0.1) : kSlate800,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: isAvailable ? kEmerald500 : kSlate500,
-                              shape: BoxShape.circle,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            isAvailable ? 'Available' : 'Busy',
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: fee == 0 ? kBlue500.withOpacity(0.1) : kEmerald500.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: fee == 0 ? kBlue500.withOpacity(0.3) : kEmerald500.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            fee == 0 ? 'Free' : '₹$fee',
                             style: TextStyle(
-                              color: isAvailable ? kEmerald500 : kSlate500,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                              color: fee == 0 ? kBlue500 : kEmerald500, 
+                              fontSize: 12, 
+                              fontWeight: FontWeight.bold
                             ),
                           ),
-                        ],
-                      ),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      type,
+                      style: const TextStyle(color: kBlue500, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.star, size: 14, color: kAmber500),
+                        const SizedBox(width: 4),
+                        Text(
+                          rating.toString(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        if (reviews > 0)
+                          Text(
+                            ' ($reviews)',
+                            style: const TextStyle(color: kSlate500, fontSize: 13),
+                          ),
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isAvailable ? kEmerald500.withOpacity(0.1) : kSlate800,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: isAvailable ? kEmerald500 : kSlate500,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isAvailable ? 'Available' : 'Busy',
+                                style: TextStyle(
+                                  color: isAvailable ? kEmerald500 : kSlate500,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Column(
-            children: [
-              _buildActionButton(
-                icon: LucideIcons.messageCircle,
-                color: kBlue500,
-                onTap: () => _startChat(pro),
-              ),
-              const SizedBox(height: 8),
-              _buildActionButton(
-                icon: LucideIcons.phone,
-                color: kEmerald500,
-                onTap: () => _makeCall(pro['phone']),
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: LucideIcons.messageCircle,
+                  label: "Chat",
+                  color: kBlue500,
+                  onTap: () => _handleConsultationRequest(pro, 'chat'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildActionButton(
+                  icon: LucideIcons.phone,
+                  label: "Call",
+                  color: kEmerald500,
+                  onTap: () => _handleConsultationRequest(pro, 'call'),
+                ),
+              ),
+            ],
+          )
         ],
       ),
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _buildActionButton({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withOpacity(0.2)),
         ),
-        child: Icon(icon, color: color, size: 18),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold))
+          ],
+        ),
       ),
     );
   }
