@@ -149,7 +149,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
       // 10 Minute Overdue: CALL
       final bool is10MinOverdue =
-          endTime.isBefore(now.subtract(const Duration(minutes: 10)));
+          endTime.isBefore(now.subtract(const Duration(minutes: 4)));
       if (is10MinOverdue && alertState == 'sms_sent') {
         print('MISSED 10 MIN CHECK-IN: ${event['title']} - Triggering CALL');
         _triggerPhoneCall(); 
@@ -158,7 +158,7 @@ class _EventPlannerScreenState extends State<EventPlannerScreen> {
 
       // 5 Minute Overdue: SMS
       final bool is5MinOverdue =
-          endTime.isBefore(now.subtract(const Duration(minutes: 5)));
+          endTime.isBefore(now.subtract(const Duration(minutes: 2)));
       if (is5MinOverdue && alertState == 'none') {
         print('MISSED 5 MIN CHECK-IN: ${event['title']} - Sending SMS');
         _triggerSmsAlert(event['title']); 

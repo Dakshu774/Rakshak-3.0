@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
+
+// 1. IMPORT THE AI HUB SCREEN
+import 'ai_safety_hub.dart'; 
+
 import '../services/ai_safety_service.dart';
 import 'voice_safety_settings.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 
 // --- THEME CONSTANTS ---
 const Color kSlate950 = Color(0xFF020617);
@@ -22,7 +27,7 @@ const Color kEmerald600 = Color(0xFF059669);
 const Color kPurple500 = Color(0xFFA855F7);
 const Color kSlate200 = Color(0xFFE2E8F0);
 
-// --- MOCK DATA FOR RECENT ACTIVITY ---
+// --- MOCK DATA ---
 final List<Map<String, dynamic>> mockActivity = [
   {'icon': LucideIcons.bellRing, 'color': kRed500, 'title': 'SOS Alert Sent', 'time': '3 min ago'},
   {'icon': LucideIcons.mapPin, 'color': kBlue500, 'title': 'Entered Safe Zone', 'time': '30 min ago'},
@@ -38,7 +43,12 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   final AISafetyService _aiService = AISafetyService();
-  bool _isListening = false;
+  
+  // --- VOICE VARIABLES ---
+  late stt.SpeechToText _speech;
+  bool _isListening = false; 
+  final String _emergencyNumber = '7973060593'; 
+  
   final bool _isSafetyActive = true;
   double _currentSpeed = 0.0;
   Timer? _updateTimer;
@@ -51,6 +61,83 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     super.initState();
     _initializeAnimations();
     _startMonitoringUpdates();
+    
+    _speech = stt.SpeechToText();
+    _initAndStartSpeech();
+  }
+
+  void _initAndStartSpeech() async {
+    var status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) return;
+
+    bool available = await _speech.initialize(
+      onStatus: _onSpeechStatus, 
+      onError: (val) => print('Speech Error: $val'),
+    );
+
+    if (available && mounted) {
+      setState(() => _isListening = true);
+      _startListening(); 
+    }
+  }
+
+  void _toggleContinuousListening() {
+    setState(() {
+      _isListening = !_isListening;
+    });
+
+    if (_isListening) {
+      _startListening();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Resuming Watch Mode"), backgroundColor: kBlue500));
+    } else {
+      _speech.stop();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Watch Mode Paused"), backgroundColor: kSlate700));
+    }
+  }
+
+  void _startListening() {
+    if (!_isListening) return; 
+
+    _speech.listen(
+      onResult: (val) {
+        if (val.recognizedWords.isNotEmpty) {
+           _scanForTriggerWord(val.recognizedWords);
+        }
+      },
+      listenFor: const Duration(seconds: 20), 
+      pauseFor: const Duration(seconds: 3),   
+      partialResults: true,
+      cancelOnError: false,
+      listenMode: stt.ListenMode.dictation,
+    );
+  }
+
+  void _onSpeechStatus(String status) {
+    if ((status == 'done' || status == 'notListening') && _isListening) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_isListening && mounted) {
+          _startListening();
+        }
+      });
+    }
+  }
+
+  void _scanForTriggerWord(String spokenWords) {
+    final words = spokenWords.toLowerCase();
+    if (words.contains('help') || words.contains('save me') || words.contains('emergency')) {
+      _triggerVoiceSOS();
+    }
+  }
+
+  void _triggerVoiceSOS() {
+    setState(() => _isListening = false);
+    _speech.stop();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: const Text("VOICE COMMAND DETECTED! CALLING NOW..."), backgroundColor: kRed500, duration: const Duration(seconds: 5))
+    );
+    
+    _makePhoneCall(_emergencyNumber);
   }
 
   void _initializeAnimations() {
@@ -74,12 +161,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void dispose() {
     _updateTimer?.cancel();
     _sosController.dispose();
+    _speech.cancel(); 
     super.dispose();
   }
 
   Future<void> _handleEmergencyCall() async {
     final Uri launchUri = Uri(scheme: 'tel', path: '911');
     if (await canLaunchUrl(launchUri)) await launchUrl(launchUri);
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    }
   }
 
   @override
@@ -108,16 +203,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             const SizedBox(height: 24),
             _buildAnimatedEntry(delay: 200, child: _buildQuickStats()),
             const SizedBox(height: 24),
-            
-            // --- NEW: EMERGENCY CONTACT SHORTCUT ---
             _buildAnimatedEntry(delay: 300, child: _buildContactShortcut()),
             const SizedBox(height: 24),
-
-            // --- NEW: VOICE COMMANDS ---
-            _buildAnimatedEntry(delay: 400, child: _buildVoiceCommandCard()),
+            
+            // --- 2. NEW AI HUB BUTTON ---
+            _buildAnimatedEntry(delay: 350, child: _buildAIHubCard()),
             const SizedBox(height: 24),
 
-            // --- NEW: RECENT ACTIVITY FEED ---
+            _buildAnimatedEntry(delay: 400, child: _buildVoiceCommandCard()),
+            const SizedBox(height: 24),
             _buildAnimatedEntry(delay: 500, child: _buildRecentActivity()),
             const SizedBox(height: 48),
           ],
@@ -126,15 +220,57 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
-  // --- NEW WIDGETS ---
+  // --- NEW WIDGET: AI HUB ENTRY POINT ---
+  Widget _buildAIHubCard() {
+    return GestureDetector(
+      onTap: () {
+        // Navigate to the AI Safety Hub
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AISafetyHub()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          // A nice purple/blue gradient to signify "AI/Smart" features
+          gradient: LinearGradient(
+            colors: [kPurple500.withOpacity(0.2), kBlue500.withOpacity(0.1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: kPurple500.withOpacity(0.3), width: 1.5),
+          boxShadow: [BoxShadow(color: kPurple500.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: kPurple500, shape: BoxShape.circle),
+              child: const Icon(LucideIcons.brainCircuit, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Rakshak AI Hub', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 4),
+                  Text('Chatbot, Fake Call & Guardian Lens', style: TextStyle(color: kSlate400, fontSize: 13)),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: kSlate500),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildContactShortcut() {
     return GestureDetector(
-      onTap: () {
-         // Placeholder: In a real app, this would fetch the parent contact number 
-         // and initiate the call or text using url_launcher.
-         launchUrl(Uri(scheme: 'tel', path: '7973060593')); 
-      },
+      onTap: () => _makePhoneCall(_emergencyNumber),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
         decoration: BoxDecoration(
@@ -173,29 +309,38 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       decoration: BoxDecoration(
           color: kSlate900.withOpacity(0.6),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: kSlate800)),
+          border: Border.all(color: _isListening ? kRed500.withOpacity(0.5) : kSlate800)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
+           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Voice Command', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-              SizedBox(height: 4),
-              Text('Say "Help" for instant alert', style: TextStyle(color: kSlate400, fontSize: 14)),
+              const Text('Hands-free Mode', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              _isListening 
+                ? Row(children: [
+                    const SizedBox(
+                      width: 12, height: 12, 
+                      child: CircularProgressIndicator(strokeWidth: 2, color: kRed500)
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Listening for "Help"...', style: TextStyle(color: kRed500, fontSize: 14, fontWeight: FontWeight.bold))
+                  ])
+                : const Text('Tap mic to resume listening', style: TextStyle(color: kSlate400, fontSize: 14)),
             ],
           ),
           GestureDetector(
-            onTap: () => setState(() => _isListening = !_isListening),
+            onTap: _toggleContinuousListening,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _isListening ? kRed500 : kBlue500,
+                color: _isListening ? kRed500 : kSlate800,
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: (_isListening ? kRed500 : kBlue500).withOpacity(0.5), blurRadius: 15, offset: const Offset(0, 4))],
+                boxShadow: [BoxShadow(color: (_isListening ? kRed500 : Colors.transparent).withOpacity(0.5), blurRadius: 15, offset: const Offset(0, 4))],
               ),
-              child: Icon(_isListening ? LucideIcons.micOff : LucideIcons.mic, color: Colors.white, size: 24),
+              child: Icon(_isListening ? LucideIcons.mic : LucideIcons.micOff, color: _isListening ? Colors.white : kSlate400, size: 24),
             ),
           ),
         ],
@@ -231,8 +376,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
-  // --- EXISTING WIDGETS (Modified slightly for brevity) ---
-  
   Widget _buildStatusCard() {
     return Container(
       padding: const EdgeInsets.all(24),

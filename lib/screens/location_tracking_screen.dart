@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // --- THEME CONSTANTS ---
 const Color kSlate950 = Color(0xFF020617);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
@@ -95,7 +96,7 @@ class _ConsultationScreenState extends State<ConsultationScreen> {
   void _openRazorpayCheckout(int amount, String doctorName, String phone, VoidCallback onSuccess) {
     _onPaymentSuccessAction = onSuccess;
     var options = {
-      'key': 'rzp_test_RhYYUi0QAJoIjR', 
+      'key': dotenv.env['RAZORPAY_KEY_ID'] ?? '', 
       'amount': amount * 100,
       'name': 'Consultation App',
       'description': 'Consultation with $doctorName',
